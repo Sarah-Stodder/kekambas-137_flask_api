@@ -2,12 +2,59 @@ from flask import request
 from app import app
 from fake_data.posts import post_data
 
+# We will setup DB later, for now we will store all new users in this list
+users = []
+
 @app.route('/')
 def index():
     first_name = 'Brian'
     last_name = 'Stanton'
     return f'Hello World!! - From {first_name} {last_name}'
 
+# USER ENDPOINTS 
+
+# Create New User
+@app.route('/users', methods=['POST'])
+def create_user():
+    # Check to see that the request body is JSON
+    if not request.is_json:
+        return {'error': 'Your content-type must be application/json'}, 400
+    
+    # Get the data from the request body
+    data = request.json
+
+    # Validate that the data has all of the required fields
+    required_fields = ['firstName', 'lastName', 'username', 'email', 'password']
+    missing_fields = []
+    for field in required_fields:
+        if field not in data:
+            missing_fields.append(field)
+    if missing_fields:
+        return {'error': f"{', '.join(missing_fields)} must be in the request body"}, 400
+    
+    # Get the values from the data
+    first_name = data.get('firstName')
+    last_name = data.get('lastName')
+    username = data.get('username')
+    email = data.get('email')
+    password = data.get('password')
+
+    # Check to see if any current users already have that username and/or email
+    for user in users:
+        if user['username'] == username or user['email'] == email:
+            return {'error': 'A user with that username and/or email already exists'}, 400
+
+    # Create a new user dict and append to users list
+    new_user = {
+        "id": len(users) + 1,
+        "firstName": first_name,
+        "lastName": last_name,
+        "username": username,
+        "email": email,
+        "password": password
+    }
+    users.append(new_user)
+    return new_user, 201
 
 # POST ENDPOINTS
 
