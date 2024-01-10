@@ -1,7 +1,7 @@
 from flask import request
 from app import app, db
 from fake_data.posts import post_data
-from app.models import User
+from app.models import User, Post
 
 # # We will setup DB later, for now we will store all new users in this list
 # users = []
@@ -55,23 +55,20 @@ def create_user():
 # Get all posts
 @app.route('/posts')
 def get_posts():
-    # Get the posts from storage (fake data, will setup db tomorrow)
-    posts = post_data
-    return posts
+    # Get the posts from the database
+    posts = db.session.execute(db.select(Post)).scalars().all()
+    # return a list of the dictionary version of each post in posts
+    return [p.to_dict() for p in posts]
 
 # Get single post by ID
 @app.route('/posts/<int:post_id>')
 def get_post(post_id):
-    # Get the posts from storage
-    posts = post_data
-    # For each dictionary in the list of post dictionaries
-    for post in posts:
-        # if the key of 'id' on the post dictionary matches the post_id from the URL
-        if post['id'] == post_id:
-            # Return that post dictionary
-            return post
-    # If we loop through all of the posts without returning, the post with that ID does not exist
-    return {'error': f'Post with an ID of {post_id} does not exist'}, 404
+    # Get the Post from the database based on the ID
+    post = db.session.get(Post, post_id)
+    if post:
+        return post.to_dict()
+    else:
+        return {'error': f'Post with an ID of {post_id} does not exist'}, 404
 
 # Create new Post route
 @app.route('/posts', methods=['POST'])
@@ -94,15 +91,6 @@ def create_post():
     title = data.get('title')
     body = data.get('body')
 
-    # Create a new post with data
-    new_post = {
-        "id": len(post_data) + 1,
-        "title": title,
-        "body": body,
-        "userId": 1,
-        "dateCreated": "2024-01-09T11:25:45",
-        "likes": 0
-    }
-    # Add the new post to the list of posts
-    post_data.append(new_post)
-    return new_post, 201
+    # Create a new instance of Post which will add to our database
+    new_post = Post(title=title, body=body, user_id=4)
+    return new_post.to_dict(), 201
