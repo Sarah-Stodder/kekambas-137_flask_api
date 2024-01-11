@@ -1,7 +1,7 @@
 from flask import request
 from app import app, db
 from fake_data.posts import post_data
-from app.models import User, Post
+from app.models import User, Post, Comment
 from app.auth import basic_auth, token_auth
 
 # # We will setup DB later, for now we will store all new users in this list
@@ -60,7 +60,7 @@ def create_user():
     return new_user.to_dict(), 201
 
 #update
-@app.route('/users/<int:user_id>', methods=['POST'])
+@app.route('/users/<int:user_id>', methods=['PUT'])
 @token_auth.login_required
 def edit_user(user_id):
     # check if they sent the data correctly
@@ -156,9 +156,111 @@ def create_post():
     title = data.get('title')
     body = data.get('body')
 
+    #get logged in user
+    user = token_auth.current_user()
+
     # Create a new instance of Post which will add to our database
-    new_post = Post(title=title, body=body, user_id=4)
+    new_post = Post(title=title, body=body, user_id=user.id)
     return new_post.to_dict(), 201
 
 #update
+#edit post
+@app.route('/posts/<int:post_id>', methods=["PUT"])
+@token_auth.login_required
+def edit_post(post_id):
+    # check if they sent a good request
+    if not request.is_json:
+        return {"error":"Your content-type is not application/json"}, 400
+    # lets find the post in our db
+    post = db.session.get(Post, post_id)
+    # if we cant find it, let em know
+    if post is None:
+        return {"error":f"post with the id of {post_id} does not exist!"}, 404
+    # get the token from current user 
+    current_user = token_auth.current_user()
+    # check and make sure they are the og author or they cant edit
+    if post.author is not current_user:
+        return {"error":"This is not your post, knock it off ya hacker"}, 403
+    # then they can get the green light
+    data = request.json
+    post.update(**data)
+    return post.to_dict()
+
+
 #delete
+
+@app.route("/posts/<int:post_id>", methods=["DELETE"])
+@token_auth.login_required
+def delete_post(post_id):
+    # get the post
+    post = db.session.get(Post,post_id)
+    # check if it exists
+    if post is None:
+        return {"error":f"We cannot locate posts with the id of {post_id}"}, 404
+    # get the logged in user token
+    current_user = token_auth.current_user()
+    # check to make sure the logged in user is post author
+    if post.author is not current_user:
+        return {"error":"You can do that, this sint your post! Get outta here!"}, 403
+    # delete post
+    post.delete()
+    return {"success":f"{post.title} has been deleted!"}
+
+
+
+#COMMENT ROUTES
+
+
+#make a comment
+@app.route("/posts/<int:post_id>/comments", methods=["POST"])
+@token_auth.login_required
+def create_comment(post_id):
+    # check make sure its a valid request
+    if not request.is_json:
+        return {"error":"Your content-type is not application/json"}, 400
+    # get the post they want to comment on
+    post = db.session.get(Post, post_id)
+    # make sure post exists
+    if post is None:
+        return {"error":f'post with the id of {post_id} cannot be found! Please try again'}, 404
+    # get the data from the user to create the comment
+    data = request.json
+    # validate data
+    required_fields = ["body"]
+    missing_fields = []
+    for field in required_fields:
+        if field not in data:
+            missing_fields(field)
+    if missing_fields:
+        return {"error": f" {' '.join(missing_fields)} must be in the request body!"}, 400
+    # pull body data
+    body = data.get('body')
+    # get the logged in users token so we know who commented
+    current_user = token_auth.current_user()
+    new_comment = Comment(body = body, user_id = current_user.id, post_id = post.id)
+    return new_comment.to_dict(), 201
+
+
+
+#delete a comment
+@app.route('/posts/<int:post_id>/comments/<int:comment_id>', methods=['DELETE'])
+@token_auth.login_required
+def delete_comment(post_id, comment_id):
+    #get the post based on post id
+    post = db.session.get(Post,post_id)
+    # check if the post exists
+    if post is None:
+        return {"error" :f"Post with the id {post_id} not found!"}, 404
+    # get the comment based off comment id
+    comment = db.session.get(Comment, comment_id)
+    # check if comment exists
+    if comment is None:
+        return {"error":f"Comment with the id of {comment_id} does not exist!"},404
+    # get the logged in user based on the token
+    current_user = token_auth.current_user()
+    # check to see if the comment belongs to the logged in user
+    if comment.user is not current_user:
+        return {"error":"You cannot delete what isn't yours! "}, 403
+    # Delete the comment
+    comment.delete()
+    return {"success":"comment deleted!"}
