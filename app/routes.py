@@ -2,6 +2,7 @@ from flask import request
 from app import app, db
 from fake_data.posts import post_data
 from app.models import User, Post
+from app.auth import basic_auth, token_auth
 
 # # We will setup DB later, for now we will store all new users in this list
 # users = []
@@ -13,6 +14,14 @@ def index():
     return f'Hello World!! - From {first_name} {last_name}'
 
 # USER ENDPOINTS 
+@app.route("/token")
+@basic_auth.login_required
+def get_token():
+    user = basic_auth.current_user()
+    token = user.get_token()
+    return {"token":token,
+            "tokenExpiration":user.token_expiration}
+
 
 # Create New User
 @app.route('/users', methods=['POST'])
@@ -50,6 +59,61 @@ def create_user():
     new_user = User(first_name=first_name, last_name=last_name, username=username, email=email, password=password)
     return new_user.to_dict(), 201
 
+#update
+@app.route('/users/<int:user_id>', methods=['POST'])
+@token_auth.login_required
+def edit_user(user_id):
+    # check if they sent the data correctly
+    if not request.is_json:
+        return {"error": "your content type must be application/json !"}, 400
+    # get user based off id
+    user = db.session.get(User, user_id)
+    # make sure it exists
+    if user is None:
+        return {"error": f"User with {user_id} does not exist"},404
+    # get their token
+    current_user = token_auth.current_user()
+    # make sure they are the person logged in
+    if user is not current_user:
+        return {"error":"You cannot change this user as you are not them!"} ,403
+    # then we update!
+    data = request.json
+    user.update(**data)
+    return user.to_dict()
+
+
+#delete
+@app.route("/users/<int:user_id>", methods=["DELETE"])
+@token_auth.login_required
+def delete_user(user_id):
+    # get the user based on the id
+    user = db.session.get(User, user_id)
+    #get token
+    current_user = token_auth.current_user()
+    # make sure its a real user
+    if user is None:
+        return {"error":f"User with {user_id} not found!"},404
+    # make sure user to del is current user
+    if user is not current_user:
+        return {"error":"You cant do that, delete yourself only"}, 403
+    # delete the user 
+    user.delete()
+    return{"success":f"{user.username} has been deleted!"}
+
+
+#retrieve? 
+@app.get("/users/<int:user_id>")
+def get_user(user_id):
+    #get the user
+    user = db.session.get(User, user_id)
+    #if no user let them know
+    if user:
+        return user.to_dict()
+    else:
+        return {"error":f" user with id:{user_id} not found"}, 404
+    
+
+
 # POST ENDPOINTS
 
 # Get all posts
@@ -72,6 +136,7 @@ def get_post(post_id):
 
 # Create new Post route
 @app.route('/posts', methods=['POST'])
+@token_auth.login_required
 def create_post():
     # Check to see that the request body is JSON
     if not request.is_json:
@@ -94,3 +159,6 @@ def create_post():
     # Create a new instance of Post which will add to our database
     new_post = Post(title=title, body=body, user_id=4)
     return new_post.to_dict(), 201
+
+#update
+#delete
